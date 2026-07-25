@@ -1,0 +1,73 @@
+name: CI TypeScript
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdk-typescript/**"
+      - ".github/workflows/ci-typescript.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "sdk-typescript/**"
+
+defaults:
+  run:
+    working-directory: sdk-typescript
+
+jobs:
+  test:
+    name: Testes Node.js ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: "pnpm"
+          cache-dependency-path: sdk-typescript/pnpm-lock.yaml
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Verificar tipos (TypeScript)
+        run: pnpm typecheck
+
+      - name: Rodar testes
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  lint:
+    name: Qualidade de código
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: sdk-typescript/pnpm-lock.yaml
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint || true

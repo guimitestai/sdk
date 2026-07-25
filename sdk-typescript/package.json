@@ -1,0 +1,73 @@
+{
+  "name": "guimitestai",
+  "version": "0.1.0",
+  "description": "🧪 Guimí Test AI — SDK TypeScript para testes, observabilidade e conformidade de LLMs. LLM-as-Judge, Red-Teaming, LGPD/EU AI Act.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "ai-testing",
+    "llm",
+    "observability",
+    "red-teaming",
+    "lgpd",
+    "eu-ai-act",
+    "llm-as-judge",
+    "mlops",
+    "langchain",
+    "langfuse",
+    "langsmith"
+  ],
+  "author": "Guimí Test AI <contato@guimitestai.com>",
+  "license": "BSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guimitestai/sdk.git",
+    "directory": "sdk-typescript"
+  },
+  "homepage": "https://guimitestai.github.io/sdk/",
+  "bugs": {
+    "url": "https://github.com/guimitestai/sdk/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0"
+  },
+  "dependencies": {
+    "zod": "^3.22.0"
+  },
+  "peerDependencies": {
+    "openai": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": {
+      "optional": true
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
