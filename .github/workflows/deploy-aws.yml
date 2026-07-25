@@ -1,0 +1,194 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Guimí Test AI — Deploy na AWS via GitHub Actions + OIDC
+# ─────────────────────────────────────────────────────────────────────────────
+# Sem AWS_ACCESS_KEY_ID nos secrets — usa OIDC (mais seguro).
+# O GitHub prova para a AWS que é ele mesmo via token temporário.
+#
+# PRÉ-REQUISITOS na AWS (fazer uma vez):
+#   1. Criar Identity Provider OIDC:
+#      - Provider URL: https://token.actions.githubusercontent.com
+#      - Audience: sts.amazonaws.com
+#   2. Criar IAM Role "guimi-deploy" com trust policy abaixo e permissões necessárias
+#   3. Substituir ARN_DA_ROLE pelo ARN real da role criada
+#
+# Trust policy da IAM Role (substituir org/repo):
+# {
+#   "Version": "2012-10-17",
+#   "Statement": [{
+#     "Effect": "Allow",
+#     "Principal": { "Federated": "arn:aws:iam::SEU_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com" },
+#     "Action": "sts:AssumeRoleWithWebIdentity",
+#     "Condition": {
+#       "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+#       "StringLike": { "token.actions.githubusercontent.com:sub": "repo:guimitestai/platform:*" }
+#     }
+#   }]
+# }
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy AWS
+
+on:
+  push:
+    branches:
+      - main          # deploy automático em produção ao fazer push na main
+  workflow_dispatch:  # deploy manual pelo GitHub UI (útil para rollback)
+    inputs:
+      environment:
+        description: "Ambiente de deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: guimitestai-engine   # nome do repositório no ECR
+  ECS_CLUSTER: guimitestai             # nome do cluster ECS
+  ECS_SERVICE: engine-api              # nome do serviço ECS
+  CONTAINER_NAME: engine               # nome do container no task definition
+
+jobs:
+  # ─── 1. Testes (não faz deploy se os testes falharem) ────────────────────
+  test:
+    name: Testes antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio pytest-cov
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  # ─── 2. Build e push da imagem Docker no ECR ─────────────────────────────
+  build-and-push:
+    name: Build Docker → ECR
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build-image.outputs.image }}
+
+    permissions:
+      id-token: write   # necessário para OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::SEU_ACCOUNT_ID:role/guimi-deploy  # ← substituir
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag e push da imagem no ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Tag "latest" também
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ─── 3. Deploy no ECS ────────────────────────────────────────────────────
+  deploy-ecs:
+    name: Deploy → ECS Fargate
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::SEU_ACCOUNT_ID:role/guimi-deploy  # ← substituir
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Baixar task definition atual do ECS
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Atualizar imagem na task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ needs.build-and-push.outputs.image }}
+
+      - name: Deploy da nova task definition no ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true   # aguarda o serviço estabilizar
+
+      - name: Notificar sucesso do deploy
+        if: success()
+        run: |
+          echo "✅ Deploy concluído com sucesso!"
+          echo "Imagem: ${{ needs.build-and-push.outputs.image }}"
+          echo "Cluster: ${{ env.ECS_CLUSTER }}"
+          echo "Serviço: ${{ env.ECS_SERVICE }}"
+
+  # ─── 4. Rollback automático se o deploy falhar ───────────────────────────
+  rollback:
+    name: Rollback automático
+    needs: deploy-ecs
+    if: failure()
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configurar credenciais AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::SEU_ACCOUNT_ID:role/guimi-deploy  # ← substituir
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback para a versão anterior
+        run: |
+          echo "⚠️ Deploy falhou! Iniciando rollback..."
+          # Pegar a task definition anterior (revision atual - 1)
+          CURRENT=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          PREVIOUS="${CURRENT%:*}:$((${CURRENT##*:} - 1))"
+          echo "Revertendo para: $PREVIOUS"
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition $PREVIOUS
+          echo "✅ Rollback concluído"
