@@ -1,0 +1,158 @@
+# ============================================================
+# Guimí Test AI — AWS CodeBuild buildspec.yml Template
+# ============================================================
+# Como usar:
+#   1. Copie este arquivo para buildspec.yml na raiz do projeto
+#   2. Configure as variáveis no CodeBuild project:
+#      Environment → Environment variables:
+#      - GUIMI_API_KEY (Parameter Store ou Secrets Manager)
+#      - OPENAI_API_KEY (Parameter Store ou Secrets Manager)
+#      - MODEL_NAME: gpt-4o-mini
+#      - API_BASE_URL: http://localhost:8000
+#      - GUIMI_FRAMEWORK: lgpd
+#      - GUIMI_PROFILE: quick
+#
+#   Integração com Secrets Manager (recomendado):
+#   No CodeBuild project, em "Additional configuration":
+#   - GUIMI_API_KEY: /guimi/api_key (SSM Parameter Store)
+#   - OPENAI_API_KEY: /openai/api_key (SSM Parameter Store)
+# ============================================================
+
+version: 0.2
+
+env:
+  variables:
+    MODEL_NAME: "gpt-4o-mini"
+    GUIMI_FRAMEWORK: "lgpd"
+    GUIMI_PROFILE: "quick"
+    GUIMI_MIN_SCORE: "70"
+  # Descomente para usar AWS Secrets Manager:
+  # secrets-manager:
+  #   GUIMI_API_KEY: "guimi/api-key:GUIMI_API_KEY"
+  #   OPENAI_API_KEY: "openai/api-key:OPENAI_API_KEY"
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - echo "=== Instalando Guimí Test AI ==="
+      - pip install "guimitestai[garak,autonomous,openai]" --quiet
+      - guimi --version
+
+  pre_build:
+    commands:
+      - echo "=== Iniciando testes de IA com Guimí ==="
+      - echo "Modelo: $MODEL_NAME | Framework: $GUIMI_FRAMEWORK | Perfil: $GUIMI_PROFILE"
+
+  build:
+    commands:
+      # ─── 1. Red Teaming de Segurança ───
+      - echo "=== [1/4] Red Teaming de Segurança ==="
+      - |
+        guimi scan \
+          --model "$MODEL_NAME" \
+          --profile "$GUIMI_PROFILE" \
+          --output scan-results.json \
+          --format json || SCAN_FAILED=true
+      - |
+        python3 -c "
+        import json, sys, os
+        if os.environ.get('SCAN_FAILED'):
+            print('WARN: scan falhou — verificar configuração do modelo')
+        else:
+            with open('scan-results.json') as f:
+                results = json.load(f)
+            critical = results.get('critical_count', 0)
+            if critical > 0:
+                print(f'CRITICAL: {critical} vulnerabilidade(s) critica(s)!')
+                sys.exit(1)
+            print(f'OK: Nenhuma vulnerabilidade critica.')
+        "
+
+      # ─── 2. Auditoria de Compliance ───
+      - echo "=== [2/4] Auditoria de Compliance ==="
+      - |
+        guimi audit \
+          --framework "$GUIMI_FRAMEWORK" \
+          --output compliance-report.json \
+          --format json \
+          --min-score "$GUIMI_MIN_SCORE"
+
+      # ─── 3. Testes Autônomos de Integração ───
+      - echo "=== [3/4] Testes Autônomos de Integração ==="
+      - |
+        if [ -n "$API_BASE_URL" ]; then
+          python3 -c "
+        import asyncio, os
+        from guimitestai.autonomous import APIDiscovery, TestGenerator, TestRunner, RegressionDetector
+
+        async def main():
+            base_url = os.environ['API_BASE_URL']
+            spec = await APIDiscovery(base_url).discover()
+            print(f'Descobertos {spec.endpoint_count} endpoints')
+            cases = TestGenerator(max_cases_per_endpoint=5).generate(spec)
+            print(f'Gerados {len(cases)} casos de teste')
+            suite = await TestRunner(base_url).run(cases)
+            print(f'Taxa de aprovacao: {suite.pass_rate:.0%}')
+            report = RegressionDetector('.guimi-baseline.json').detect(suite)
+            if report.critical_regressions:
+                print(f'CRITICAL: {len(report.critical_regressions)} regressoes criticas!')
+                import sys; sys.exit(1)
+            print('Sem regressoes criticas.')
+
+        asyncio.run(main())
+        "
+        else
+          echo "API_BASE_URL não configurado — pulando testes autônomos."
+        fi
+
+      # ─── 4. Avaliação de Qualidade do LLM ───
+      - echo "=== [4/4] Avaliação de Qualidade do LLM ==="
+      - |
+        if [ -f "tests/eval-dataset.csv" ]; then
+          guimi eval \
+            --dataset tests/eval-dataset.csv \
+            --model "$MODEL_NAME" \
+            --criteria correctness,helpfulness \
+            --output eval-results.json \
+            --min-score 0.75
+        else
+          echo "Nenhum dataset encontrado — pulando avaliação."
+        fi
+
+  post_build:
+    commands:
+      - echo "=== Guimí Test AI concluído ==="
+      - |
+        python3 -c "
+        import json, os
+        results = {}
+        for fname in ['scan-results.json', 'compliance-report.json', 'eval-results.json']:
+            if os.path.exists(fname):
+                with open(fname) as f:
+                    results[fname] = json.load(f)
+        print('Resumo dos resultados:')
+        for k, v in results.items():
+            print(f'  {k}: {list(v.keys())[:3]}...')
+        " || true
+
+artifacts:
+  files:
+    - scan-results.json
+    - compliance-report.json
+    - eval-results.json
+    - .guimi-baseline.json
+  discard-paths: no
+  name: guimi-test-results-$(date +%Y%m%d-%H%M%S)
+
+cache:
+  paths:
+    - /root/.cache/pip/**/*
+    - .guimi-baseline.json
+
+reports:
+  guimi-compliance-report:
+    files:
+      - compliance-report.json
+    discard-paths: yes

@@ -1,0 +1,177 @@
+# ============================================================
+# Guimí Test AI — Azure DevOps Pipelines Template
+# ============================================================
+# Como usar:
+#   1. Copie este arquivo para azure-pipelines.yml na raiz
+#   2. Configure as variáveis em Pipelines → Library → Variable Groups:
+#      - GUIMI_API_KEY: sua chave da plataforma Guimí (secret)
+#      - MODEL_NAME: nome do modelo (ex: gpt-4o-mini)
+#      - API_BASE_URL: URL base da sua API
+# ============================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+schedules:
+  - cron: "0 2 * * *"
+    displayName: "Auditoria Diária de Compliance"
+    branches:
+      include:
+        - main
+    always: true
+
+variables:
+  - group: guimi-secrets          # Variable Group com GUIMI_API_KEY
+  - name: pythonVersion
+    value: "3.11"
+  - name: MODEL_NAME
+    value: $[coalesce(variables['MODEL_NAME'], 'gpt-4o-mini')]
+  - name: GUIMI_FRAMEWORK
+    value: $[coalesce(variables['GUIMI_FRAMEWORK'], 'lgpd')]
+  - name: GUIMI_PROFILE
+    value: $[coalesce(variables['GUIMI_PROFILE'], 'quick')]
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  # ─────────────────────────────────────────────
+  # Stage 1: Red Teaming de Segurança
+  # ─────────────────────────────────────────────
+  - stage: SecurityScan
+    displayName: "🔴 Red Teaming de Segurança"
+    jobs:
+      - job: SecurityScan
+        displayName: "Guimí Security Scan"
+        timeoutInMinutes: 15
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+            displayName: "Configurar Python $(pythonVersion)"
+
+          - script: pip install "guimitestai[garak]" --quiet
+            displayName: "Instalar Guimí"
+
+          - script: |
+              guimi scan \
+                --model "$(MODEL_NAME)" \
+                --profile "$(GUIMI_PROFILE)" \
+                --output $(Build.ArtifactStagingDirectory)/scan-results.json \
+                --format json
+            displayName: "Executar Security Scan"
+            env:
+              GUIMI_API_KEY: $(GUIMI_API_KEY)
+              OPENAI_API_KEY: $(OPENAI_API_KEY)
+
+          - script: |
+              python3 -c "
+              import json, sys
+              with open('$(Build.ArtifactStagingDirectory)/scan-results.json') as f:
+                  results = json.load(f)
+              critical = results.get('critical_count', 0)
+              if critical > 0:
+                  print(f'##vso[task.logissue type=error]CRITICAL: {critical} vulnerabilidade(s) crítica(s)!')
+                  sys.exit(1)
+              print(f'OK: Nenhuma vulnerabilidade crítica.')
+              "
+            displayName: "Verificar Vulnerabilidades Críticas"
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)/scan-results.json
+              artifactName: security-scan-results
+            displayName: "Publicar Resultados"
+
+  # ─────────────────────────────────────────────
+  # Stage 2: Auditoria de Compliance
+  # ─────────────────────────────────────────────
+  - stage: ComplianceAudit
+    displayName: "📋 Auditoria de Compliance"
+    dependsOn: SecurityScan
+    condition: succeeded()
+    jobs:
+      - job: ComplianceAudit
+        displayName: "Guimí Compliance Audit"
+        timeoutInMinutes: 10
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+            displayName: "Configurar Python"
+
+          - script: pip install guimitestai --quiet
+            displayName: "Instalar Guimí"
+
+          - script: |
+              guimi audit \
+                --framework "$(GUIMI_FRAMEWORK)" \
+                --output $(Build.ArtifactStagingDirectory)/compliance-report.json \
+                --format json \
+                --min-score 70
+            displayName: "Executar Auditoria de Compliance"
+            env:
+              GUIMI_API_KEY: $(GUIMI_API_KEY)
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)/compliance-report.json
+              artifactName: compliance-report
+            displayName: "Publicar Relatório"
+
+  # ─────────────────────────────────────────────
+  # Stage 3: Testes Autônomos de Integração
+  # ─────────────────────────────────────────────
+  - stage: AutonomousTests
+    displayName: "🤖 Testes Autônomos de Integração"
+    dependsOn: ComplianceAudit
+    condition: and(succeeded(), ne(variables['API_BASE_URL'], ''))
+    jobs:
+      - job: AutonomousTests
+        displayName: "Guimí Autonomous Tests"
+        timeoutInMinutes: 20
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+            displayName: "Configurar Python"
+
+          - script: pip install "guimitestai[autonomous]" --quiet
+            displayName: "Instalar Guimí"
+
+          - script: |
+              python3 -c "
+              import asyncio, os
+              from guimitestai.autonomous import APIDiscovery, TestGenerator, TestRunner, RegressionDetector
+
+              async def main():
+                  base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000')
+                  spec = await APIDiscovery(base_url).discover()
+                  print(f'##[section]Descobertos {spec.endpoint_count} endpoints')
+                  cases = TestGenerator(max_cases_per_endpoint=5).generate(spec)
+                  print(f'##[section]Gerados {len(cases)} casos de teste')
+                  suite = await TestRunner(base_url).run(cases)
+                  print(f'##[section]Taxa de aprovação: {suite.pass_rate:.0%}')
+                  report = RegressionDetector('.guimi-baseline.json').detect(suite)
+                  if report.critical_regressions:
+                      print(f'##vso[task.logissue type=error]CRITICAL: {len(report.critical_regressions)} regressões!')
+                      import sys; sys.exit(1)
+                  print('##[section]Sem regressões críticas.')
+
+              asyncio.run(main())
+              "
+            displayName: "Executar Testes Autônomos"
+            env:
+              API_BASE_URL: $(API_BASE_URL)

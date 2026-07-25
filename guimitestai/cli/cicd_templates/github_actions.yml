@@ -1,0 +1,286 @@
+# ============================================================
+# Guimí Test AI — GitHub Actions CI/CD Template
+# ============================================================
+# Como usar:
+#   1. Copie este arquivo para .github/workflows/guimi.yml
+#   2. Adicione os secrets no repositório:
+#      Settings → Secrets → Actions:
+#      - GUIMI_API_KEY: sua chave da plataforma Guimí
+#   3. Configure as variáveis em env: abaixo
+#
+# Comandos disponíveis:
+#   guimi scan    — red teaming do modelo LLM
+#   guimi audit   — auditoria de compliance (LGPD, EU AI Act, NIST)
+#   guimi eval    — avaliação em lote com dataset CSV
+#   guimi trace   — observabilidade de traces
+#   guimi report  — gerar relatório PDF de compliance
+# ============================================================
+
+name: Guimí AI Test Suite
+
+on:
+  push:
+    branches: [main, develop, "release/**"]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Execução diária às 02:00 UTC (auditoria de compliance)
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Perfil de teste (quick | security | lgpd | eu_ai_act)"
+        required: false
+        default: "quick"
+      framework:
+        description: "Framework de compliance (lgpd | eu_ai_act | nist | iso42001)"
+        required: false
+        default: "lgpd"
+
+env:
+  GUIMI_API_KEY: ${{ secrets.GUIMI_API_KEY }}
+  # Configurar conforme seu ambiente:
+  MODEL_ENDPOINT: ${{ vars.MODEL_ENDPOINT || 'https://api.openai.com/v1' }}
+  MODEL_NAME: ${{ vars.MODEL_NAME || 'gpt-4o-mini' }}
+  API_BASE_URL: ${{ vars.API_BASE_URL || 'http://localhost:8000' }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Red Teaming de Segurança
+  # ─────────────────────────────────────────────
+  security-scan:
+    name: "🔴 Red Teaming — ${{ github.event.inputs.profile || 'quick' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Guimí
+        run: pip install "guimitestai[garak]"
+
+      - name: Run Security Scan
+        run: |
+          guimi scan \
+            --model "${{ env.MODEL_NAME }}" \
+            --endpoint "${{ env.MODEL_ENDPOINT }}" \
+            --profile "${{ github.event.inputs.profile || 'quick' }}" \
+            --output scan-results.json \
+            --format json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Check for Critical Vulnerabilities
+        run: |
+          python3 -c "
+          import json, sys
+          with open('scan-results.json') as f:
+              results = json.load(f)
+          critical = results.get('critical_count', 0)
+          if critical > 0:
+              print(f'❌ {critical} vulnerabilidade(s) crítica(s) encontrada(s)!')
+              sys.exit(1)
+          print(f'✅ Nenhuma vulnerabilidade crítica encontrada.')
+          "
+
+      - name: Upload Scan Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: scan-results.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 2: Auditoria de Compliance
+  # ─────────────────────────────────────────────
+  compliance-audit:
+    name: "📋 Compliance — ${{ github.event.inputs.framework || 'lgpd' }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Guimí
+        run: pip install guimitestai
+
+      - name: Run Compliance Audit
+        run: |
+          guimi audit \
+            --framework "${{ github.event.inputs.framework || 'lgpd' }}" \
+            --output compliance-report.json \
+            --format json \
+            --min-score 70
+        env:
+          GUIMI_API_KEY: ${{ env.GUIMI_API_KEY }}
+
+      - name: Generate PDF Report (scheduled only)
+        if: github.event_name == 'schedule'
+        run: |
+          guimi report \
+            --framework "${{ github.event.inputs.framework || 'lgpd' }}" \
+            --output compliance-report.pdf \
+            --org "${{ github.repository_owner }}"
+
+      - name: Upload Compliance Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compliance-report
+          path: |
+            compliance-report.json
+            compliance-report.pdf
+          retention-days: 90
+
+  # ─────────────────────────────────────────────
+  # Job 3: Testes Autônomos de Integração
+  # ─────────────────────────────────────────────
+  autonomous-tests:
+    name: "🤖 Testes Autônomos de Integração"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Executar apenas se a API estiver disponível
+    if: vars.API_BASE_URL != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Guimí
+        run: pip install "guimitestai[autonomous]"
+
+      - name: Discover & Run Autonomous Tests
+        run: |
+          python3 -c "
+          import asyncio
+          from guimitestai.autonomous import APIDiscovery, TestGenerator, TestRunner, RegressionDetector
+
+          async def main():
+              # 1. Descobrir endpoints
+              discovery = APIDiscovery('${{ env.API_BASE_URL }}')
+              spec = await discovery.discover()
+              print(f'Descobertos {spec.endpoint_count} endpoints')
+
+              # 2. Gerar casos de teste
+              generator = TestGenerator(max_cases_per_endpoint=5)
+              cases = generator.generate(spec)
+              print(f'Gerados {len(cases)} casos de teste')
+
+              # 3. Executar testes
+              runner = TestRunner('${{ env.API_BASE_URL }}')
+              suite = await runner.run(cases)
+              print(f'Taxa de aprovação: {suite.pass_rate:.0%}')
+
+              # 4. Detectar regressões
+              detector = RegressionDetector('.guimi-baseline.json')
+              report = detector.detect(suite)
+
+              if report.critical_regressions:
+                  print(f'CRITICAL: {len(report.critical_regressions)} regressões críticas!')
+                  import sys; sys.exit(1)
+
+              print('Sem regressões críticas detectadas.')
+
+          asyncio.run(main())
+          "
+
+      - name: Cache Baseline
+        uses: actions/cache@v4
+        with:
+          path: .guimi-baseline.json
+          key: guimi-baseline-${{ github.ref_name }}
+          restore-keys: guimi-baseline-
+
+  # ─────────────────────────────────────────────
+  # Job 4: Avaliação de Qualidade do LLM
+  # ─────────────────────────────────────────────
+  llm-evaluation:
+    name: "🧠 Avaliação de Qualidade do LLM"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: hashFiles('tests/eval-dataset.csv') != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Guimí
+        run: pip install "guimitestai[openai]"
+
+      - name: Run LLM Evaluation
+        run: |
+          guimi eval \
+            --dataset tests/eval-dataset.csv \
+            --model "${{ env.MODEL_NAME }}" \
+            --criteria correctness,helpfulness \
+            --output eval-results.json \
+            --min-score 0.75
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GUIMI_API_KEY: ${{ env.GUIMI_API_KEY }}
+
+      - name: Upload Evaluation Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: llm-evaluation-results
+          path: eval-results.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # Job 5: Notificação de Falhas
+  # ─────────────────────────────────────────────
+  notify-on-failure:
+    name: "📢 Notificar Falhas"
+    runs-on: ubuntu-latest
+    needs: [security-scan, compliance-audit, autonomous-tests]
+    if: failure() && github.event_name != 'pull_request'
+
+    steps:
+      - name: Notify Slack
+        if: vars.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "⚠️ *Guimí Test AI* detectou falhas em `${{ github.repository }}`",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ *Guimí Test AI — Falha Detectada*\n*Repositório:* `${{ github.repository }}`\n*Branch:* `${{ github.ref_name }}`\n*Commit:* `${{ github.sha }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Ver detalhes>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

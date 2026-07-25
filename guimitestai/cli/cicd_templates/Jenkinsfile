@@ -1,0 +1,199 @@
+// ============================================================
+// Guimí Test AI — Jenkins Pipeline Template
+// ============================================================
+// Como usar:
+//   1. Copie este arquivo para Jenkinsfile na raiz do projeto
+//   2. Configure as credenciais no Jenkins:
+//      Manage Jenkins → Credentials → Global:
+//      - GUIMI_API_KEY (Secret text)
+//      - OPENAI_API_KEY (Secret text)
+//   3. Configure as variáveis de ambiente no job:
+//      - MODEL_NAME: gpt-4o-mini
+//      - API_BASE_URL: http://localhost:8000
+//      - GUIMI_FRAMEWORK: lgpd
+// ============================================================
+
+pipeline {
+    agent {
+        docker {
+            image 'python:3.11-slim'
+            args '-u root'
+        }
+    }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        disableConcurrentBuilds()
+    }
+
+    triggers {
+        // Auditoria diária às 02:00
+        cron('0 2 * * *')
+    }
+
+    environment {
+        GUIMI_API_KEY     = credentials('GUIMI_API_KEY')
+        OPENAI_API_KEY    = credentials('OPENAI_API_KEY')
+        MODEL_NAME        = "${env.MODEL_NAME ?: 'gpt-4o-mini'}"
+        GUIMI_FRAMEWORK   = "${env.GUIMI_FRAMEWORK ?: 'lgpd'}"
+        GUIMI_PROFILE     = "${env.GUIMI_PROFILE ?: 'quick'}"
+        API_BASE_URL      = "${env.API_BASE_URL ?: ''}"
+        PIP_NO_CACHE_DIR  = 'off'
+    }
+
+    stages {
+        // ─────────────────────────────────────────────
+        // Stage 1: Red Teaming de Segurança
+        // ─────────────────────────────────────────────
+        stage('🔴 Security Scan') {
+            steps {
+                sh 'pip install "guimitestai[garak]" --quiet'
+                sh """
+                    guimi scan \\
+                        --model "${MODEL_NAME}" \\
+                        --profile "${GUIMI_PROFILE}" \\
+                        --output scan-results.json \\
+                        --format json
+                """
+                sh '''
+                    python3 -c "
+import json, sys
+with open('scan-results.json') as f:
+    results = json.load(f)
+critical = results.get('critical_count', 0)
+if critical > 0:
+    print(f'CRITICAL: {critical} vulnerabilidade(s) critica(s)!')
+    sys.exit(1)
+print('OK: Nenhuma vulnerabilidade critica.')
+"
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'scan-results.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 2: Auditoria de Compliance
+        // ─────────────────────────────────────────────
+        stage('📋 Compliance Audit') {
+            steps {
+                sh 'pip install guimitestai --quiet'
+                sh """
+                    guimi audit \\
+                        --framework "${GUIMI_FRAMEWORK}" \\
+                        --output compliance-report.json \\
+                        --format json \\
+                        --min-score 70
+                """
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'compliance-report.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 3: Testes Autônomos de Integração
+        // ─────────────────────────────────────────────
+        stage('🤖 Autonomous Tests') {
+            when {
+                expression { env.API_BASE_URL?.trim() }
+            }
+            steps {
+                sh 'pip install "guimitestai[autonomous]" --quiet'
+                sh '''
+                    python3 -c "
+import asyncio, os
+from guimitestai.autonomous import APIDiscovery, TestGenerator, TestRunner, RegressionDetector
+
+async def main():
+    base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000')
+    spec = await APIDiscovery(base_url).discover()
+    print(f'Descobertos {spec.endpoint_count} endpoints')
+    cases = TestGenerator(max_cases_per_endpoint=5).generate(spec)
+    print(f'Gerados {len(cases)} casos de teste')
+    suite = await TestRunner(base_url).run(cases)
+    print(f'Taxa de aprovacao: {suite.pass_rate:.0%}')
+    report = RegressionDetector('.guimi-baseline.json').detect(suite)
+    if report.critical_regressions:
+        print(f'CRITICAL: {len(report.critical_regressions)} regressoes criticas!')
+        import sys; sys.exit(1)
+    print('Sem regressoes criticas.')
+
+asyncio.run(main())
+"
+                '''
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 4: Avaliação de Qualidade do LLM
+        // ─────────────────────────────────────────────
+        stage('🧠 LLM Evaluation') {
+            when {
+                expression { fileExists('tests/eval-dataset.csv') }
+            }
+            steps {
+                sh 'pip install "guimitestai[openai]" --quiet'
+                sh """
+                    guimi eval \\
+                        --dataset tests/eval-dataset.csv \\
+                        --model "${MODEL_NAME}" \\
+                        --criteria correctness,helpfulness \\
+                        --output eval-results.json \\
+                        --min-score 0.75
+                """
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'eval-results.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────
+        // Stage 5: Relatório PDF (apenas em schedule)
+        // ─────────────────────────────────────────────
+        stage('📄 Generate PDF Report') {
+            when {
+                triggeredBy 'TimerTrigger'
+            }
+            steps {
+                sh 'pip install guimitestai --quiet'
+                sh """
+                    guimi report \\
+                        --framework "${GUIMI_FRAMEWORK}" \\
+                        --output compliance-report.pdf
+                """
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'compliance-report.pdf', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            // Notificação de falha — configurar conforme o canal da empresa
+            echo "⚠️ Guimí Test AI detectou falhas no build ${env.BUILD_NUMBER}"
+            // emailext(
+            //     subject: "⚠️ Guimí: Falha no build ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            //     body: "Acesse: ${env.BUILD_URL}",
+            //     to: "${env.NOTIFY_EMAIL}"
+            // )
+        }
+        success {
+            echo "✅ Guimí Test AI: todos os testes passaram no build ${env.BUILD_NUMBER}"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

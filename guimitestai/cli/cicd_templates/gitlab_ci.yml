@@ -1,0 +1,180 @@
+# ============================================================
+# Guimí Test AI — GitLab CI/CD Template
+# ============================================================
+# Como usar:
+#   1. Copie este arquivo para .gitlab-ci.yml na raiz do projeto
+#   2. Configure as variáveis em Settings → CI/CD → Variables:
+#      - GUIMI_API_KEY: sua chave da plataforma Guimí (masked)
+#      - MODEL_NAME: nome do modelo (ex: gpt-4o-mini)
+#      - API_BASE_URL: URL base da sua API (ex: http://localhost:8000)
+# ============================================================
+
+image: python:3.11-slim
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  MODEL_NAME: "${MODEL_NAME:-gpt-4o-mini}"
+  GUIMI_PROFILE: "${GUIMI_PROFILE:-quick}"
+  GUIMI_FRAMEWORK: "${GUIMI_FRAMEWORK:-lgpd}"
+
+cache:
+  paths:
+    - .cache/pip
+    - .guimi-baseline.json
+
+stages:
+  - security
+  - compliance
+  - autonomous-tests
+  - evaluation
+  - report
+
+# ─────────────────────────────────────────────
+# Stage 1: Red Teaming de Segurança
+# ─────────────────────────────────────────────
+security-scan:
+  stage: security
+  script:
+    - pip install "guimitestai[garak]" --quiet
+    - |
+      guimi scan \
+        --model "$MODEL_NAME" \
+        --profile "$GUIMI_PROFILE" \
+        --output scan-results.json \
+        --format json
+    - |
+      python3 -c "
+      import json, sys
+      with open('scan-results.json') as f:
+          results = json.load(f)
+      critical = results.get('critical_count', 0)
+      if critical > 0:
+          print(f'CRITICAL: {critical} vulnerabilidade(s) crítica(s)!')
+          sys.exit(1)
+      print(f'OK: Nenhuma vulnerabilidade crítica.')
+      "
+  artifacts:
+    when: always
+    paths:
+      - scan-results.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# ─────────────────────────────────────────────
+# Stage 2: Auditoria de Compliance
+# ─────────────────────────────────────────────
+compliance-audit:
+  stage: compliance
+  script:
+    - pip install guimitestai --quiet
+    - |
+      guimi audit \
+        --framework "$GUIMI_FRAMEWORK" \
+        --output compliance-report.json \
+        --format json \
+        --min-score 70
+  artifacts:
+    when: always
+    paths:
+      - compliance-report.json
+    expire_in: 90 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+# ─────────────────────────────────────────────
+# Stage 3: Testes Autônomos de Integração
+# ─────────────────────────────────────────────
+autonomous-tests:
+  stage: autonomous-tests
+  script:
+    - pip install "guimitestai[autonomous]" --quiet
+    - |
+      python3 -c "
+      import asyncio
+      from guimitestai.autonomous import APIDiscovery, TestGenerator, TestRunner, RegressionDetector
+      import os
+
+      async def main():
+          base_url = os.environ.get('API_BASE_URL', 'http://localhost:8000')
+          discovery = APIDiscovery(base_url)
+          spec = await discovery.discover()
+          print(f'Descobertos {spec.endpoint_count} endpoints')
+
+          generator = TestGenerator(max_cases_per_endpoint=5)
+          cases = generator.generate(spec)
+          print(f'Gerados {len(cases)} casos de teste')
+
+          runner = TestRunner(base_url)
+          suite = await runner.run(cases)
+          print(f'Taxa de aprovação: {suite.pass_rate:.0%}')
+
+          detector = RegressionDetector('.guimi-baseline.json')
+          report = detector.detect(suite)
+
+          if report.critical_regressions:
+              print(f'CRITICAL: {len(report.critical_regressions)} regressões críticas!')
+              import sys; sys.exit(1)
+
+          detector.save_baseline(suite)
+          print('Baseline atualizado.')
+
+      asyncio.run(main())
+      "
+  artifacts:
+    paths:
+      - .guimi-baseline.json
+    expire_in: 7 days
+  rules:
+    - if: $API_BASE_URL != null
+
+# ─────────────────────────────────────────────
+# Stage 4: Avaliação de Qualidade do LLM
+# ─────────────────────────────────────────────
+llm-evaluation:
+  stage: evaluation
+  script:
+    - pip install "guimitestai[openai]" --quiet
+    - |
+      if [ -f "tests/eval-dataset.csv" ]; then
+        guimi eval \
+          --dataset tests/eval-dataset.csv \
+          --model "$MODEL_NAME" \
+          --criteria correctness,helpfulness \
+          --output eval-results.json \
+          --min-score 0.75
+      else
+        echo "Nenhum dataset encontrado em tests/eval-dataset.csv — pulando avaliação."
+      fi
+  artifacts:
+    when: always
+    paths:
+      - eval-results.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      exists:
+        - tests/eval-dataset.csv
+
+# ─────────────────────────────────────────────
+# Stage 5: Relatório PDF (apenas em schedule)
+# ─────────────────────────────────────────────
+generate-report:
+  stage: report
+  script:
+    - pip install guimitestai --quiet
+    - |
+      guimi report \
+        --framework "$GUIMI_FRAMEWORK" \
+        --output compliance-report.pdf \
+        --org "$CI_PROJECT_NAMESPACE"
+  artifacts:
+    paths:
+      - compliance-report.pdf
+    expire_in: 90 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
