@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from guimitestai.core.models import SecurityAlert, Severity
 
-
 ATTACK_PAYLOADS: Dict[str, List[Dict[str, Any]]] = {
     "prompt_injection": [
         {
@@ -139,7 +138,6 @@ class RedTeamer:
         Returns:
             Lista de SecurityAlert com resultados de cada ataque.
         """
-        import asyncio
         types_to_run = attack_types or self.attack_types
         alerts: List[SecurityAlert] = []
 

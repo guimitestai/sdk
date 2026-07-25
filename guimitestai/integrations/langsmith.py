@@ -69,7 +69,7 @@ class LangSmithIntegration:
         client = self._get_client()
         dataset = client.create_dataset(
             dataset_name=name,
-            description=description or f"Dataset criado pelo Guimí Test AI",
+            description=description or "Dataset criado pelo Guimí Test AI",
         )
         if examples:
             client.create_examples(

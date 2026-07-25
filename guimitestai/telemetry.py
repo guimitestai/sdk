@@ -45,7 +45,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
 # ─── Configuração ─────────────────────────────────────────────────────────────
 
 TELEMETRY_ENDPOINT = "https://telemetry.guimitestai.com/v1/events"

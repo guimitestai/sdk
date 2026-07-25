@@ -7,8 +7,8 @@ executa e detecta regressões sem intervenção humana.
 
 from guimitestai.autonomous.discovery import APIDiscovery, APIEndpoint, APISpec
 from guimitestai.autonomous.generator import TestCase, TestGenerator
-from guimitestai.autonomous.runner import TestResult, TestRunner
 from guimitestai.autonomous.regression import RegressionDetector, RegressionReport
+from guimitestai.autonomous.runner import TestResult, TestRunner
 
 __all__ = [
     "APIDiscovery",

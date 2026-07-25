@@ -5,11 +5,11 @@ from guimitestai.integrations.langsmith import LangSmithIntegration
 
 try:
     from guimitestai.integrations.garak import (
-        GarakIntegration,
-        GarakScanResult,
-        GarakProbeResult,
-        GARAK_PROFILES,
         GARAK_PROBE_CATEGORIES,
+        GARAK_PROFILES,
+        GarakIntegration,
+        GarakProbeResult,
+        GarakScanResult,
     )
 except ImportError:
     pass  # Garak é opcional: pip install guimitestai[garak]

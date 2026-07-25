@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from guimitestai.core.models import EvaluationResult
 
-
 CRITERIA_PROMPTS: Dict[str, str] = {
     "correctness": (
         "Avalie se a resposta está factualmente correta em relação à resposta esperada. "

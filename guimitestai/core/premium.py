@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-
 PREMIUM_UPGRADE_URL = "https://guimitestai.com/upgrade"
 DOCS_URL = "https://docs.guimitestai.com"
 
