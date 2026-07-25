@@ -26,7 +26,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich import print as rprint
 
 app = typer.Typer(
     name="guimi",
@@ -543,7 +542,7 @@ def report(
                     f"Gerando relatório PDF para '{organization}'...",
                     total=None,
                 )
-                pdf_bytes = await client.compliance_report(
+                await client.compliance_report(
                     organization=organization,
                     period_days=30,
                 )

@@ -39,7 +39,7 @@ Privacidade e telemetria (LGPD/GDPR compliant — opt-in):
     >>> guimitestai.telemetry.delete_my_data()              # apagar tudo
 
 Documentação: https://docs.guimitestai.com
-Repositório:  https://github.com/EmersonGuilherme/guimitestai
+Repositório:  https://github.com/guimitestai/sdk
 Privacidade:  https://guimitestai.com/privacy
 """
 
@@ -48,13 +48,17 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from guimitestai import telemetry
+
+# ComplianceChecker é premium — importar mas bloquear uso sem API key
+from guimitestai.compliance.checker import ComplianceChecker
 from guimitestai.core.client import GuimiClient
 from guimitestai.core.config import GuimiConfig
 from guimitestai.core.models import (
-    EvaluationResult,
-    TraceEvent,
     ComplianceReport,
+    EvaluationResult,
     SecurityAlert,
+    TraceEvent,
 )
 from guimitestai.core.premium import (
     PremiumFeatureError,
@@ -64,10 +68,6 @@ from guimitestai.core.premium import (
 from guimitestai.evaluation.evaluator import Evaluator
 from guimitestai.observability.tracer import Tracer
 from guimitestai.security.red_teamer import RedTeamer
-from guimitestai import telemetry
-
-# ComplianceChecker é premium — importar mas bloquear uso sem API key
-from guimitestai.compliance.checker import ComplianceChecker
 
 __version__ = "0.1.0"
 __author__ = "Emerson Guilherme"
@@ -94,6 +94,7 @@ __all__ = [
     # Premium gate
     "PremiumFeatureError",
     "is_premium_enabled",
+    "require_premium",
     # Telemetria (opt-in, LGPD/GDPR compliant)
     "telemetry",
     # Metadados

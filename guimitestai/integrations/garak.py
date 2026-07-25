@@ -13,13 +13,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import tempfile
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 
 # ─── Categorias de probes disponíveis no Garak ───────────────────────────────
 
@@ -273,7 +271,7 @@ class GarakIntegration:
                 timeout=30,
             )
             lines = result.stdout.strip().split("\n")
-            return [l.strip() for l in lines if l.strip() and not l.startswith("garak")]
+            return [line.strip() for line in lines if line.strip() and not line.startswith("garak")]
         except Exception:
             return list(GARAK_PROBE_CATEGORIES.keys())
 
@@ -482,7 +480,7 @@ class GarakIntegration:
 
         Útil para unificar resultados do Garak com os do RedTeamer nativo.
         """
-        from guimitestai.core.models import SecurityAlert, Severity
+        from guimitestai.core.models import Severity
 
         severity_map = {
             "critical": Severity.CRITICAL,
