@@ -1,0 +1,182 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Guimí Test AI — Deploy Self-Hosted via Docker Compose (VPS / servidor próprio)
+# ─────────────────────────────────────────────────────────────────────────────
+# Para quem tem um VPS (DigitalOcean, Hetzner, Linode, EC2 simples, etc.)
+# e quer deploy automático sem precisar de ECS, Cloud Run ou Kubernetes.
+#
+# PRÉ-REQUISITOS no servidor:
+#   1. Docker e Docker Compose instalados
+#   2. Usuário com acesso SSH e permissão para rodar docker
+#   3. Pasta do projeto criada: mkdir -p /opt/guimitestai
+#   4. Arquivo .env de produção em /opt/guimitestai/.env
+#
+# Secrets necessários no GitHub (Settings → Secrets):
+#   SSH_HOST        → IP ou hostname do servidor (ex: 192.168.1.100)
+#   SSH_USER        → usuário SSH (ex: ubuntu, deploy)
+#   SSH_PRIVATE_KEY → chave privada SSH (conteúdo do arquivo ~/.ssh/id_rsa)
+#   SSH_PORT        → porta SSH (padrão: 22)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy Docker Compose
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  DEPLOY_PATH: /opt/guimitestai   # caminho no servidor
+  COMPOSE_FILE: docker-compose.prod.yml
+
+jobs:
+  # ─── 1. Testes ───────────────────────────────────────────────────────────
+  test:
+    name: Testes antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio pytest-cov
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  # ─── 2. Build da imagem Docker ───────────────────────────────────────────
+  build:
+    name: Build Docker
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: |
+          docker build -t guimitestai-engine:${{ github.sha }} .
+          docker tag guimitestai-engine:${{ github.sha }} guimitestai-engine:latest
+
+      - name: Salvar imagem como artifact
+        run: |
+          docker save guimitestai-engine:${{ github.sha }} | gzip > engine-image.tar.gz
+
+      - name: Upload do artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: engine-image.tar.gz
+          retention-days: 1
+
+  # ─── 3. Deploy via SSH ───────────────────────────────────────────────────
+  deploy:
+    name: Deploy → VPS via SSH
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download da imagem Docker
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Enviar imagem para o servidor
+        run: |
+          scp -P ${{ secrets.SSH_PORT || 22 }} \
+            engine-image.tar.gz \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Enviar docker-compose para o servidor
+        run: |
+          scp -P ${{ secrets.SSH_PORT || 22 }} \
+            ${{ env.COMPOSE_FILE }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.DEPLOY_PATH }}/docker-compose.yml
+
+      - name: Executar deploy no servidor
+        run: |
+          ssh -p ${{ secrets.SSH_PORT || 22 }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+
+            echo "📦 Carregando nova imagem..."
+            docker load < engine-image.tar.gz
+
+            echo "🔄 Atualizando serviços..."
+            # Salvar versão atual para rollback
+            CURRENT_IMAGE=$(docker compose ps -q engine 2>/dev/null | head -1)
+            echo "$CURRENT_IMAGE" > .previous-container
+
+            # Deploy com zero-downtime (scale up novo, scale down antigo)
+            docker compose up -d --no-deps --scale engine=2 engine
+            sleep 10
+            docker compose up -d --no-deps --scale engine=1 engine
+
+            echo "🧹 Limpando imagens antigas..."
+            docker image prune -f
+
+            echo "✅ Deploy concluído!"
+            docker compose ps
+          ENDSSH
+
+      - name: Health check pós-deploy
+        run: |
+          sleep 5
+          ssh -p ${{ secrets.SSH_PORT || 22 }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "curl -sf http://localhost:8000/health || exit 1"
+          echo "✅ Health check passou!"
+
+  # ─── 4. Rollback automático ───────────────────────────────────────────────
+  rollback:
+    name: Rollback automático
+    needs: deploy
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback para versão anterior
+        run: |
+          ssh -p ${{ secrets.SSH_PORT || 22 }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            echo "⚠️ Deploy falhou! Iniciando rollback..."
+            # Restaurar imagem anterior
+            docker compose up -d --no-deps engine
+            echo "✅ Rollback concluído"
+            docker compose ps
+          ENDSSH

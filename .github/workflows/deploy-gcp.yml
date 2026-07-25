@@ -1,0 +1,207 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Guimí Test AI — Deploy no Google Cloud Run via GitHub Actions + Workload Identity
+# ─────────────────────────────────────────────────────────────────────────────
+# Sem chaves de serviço nos secrets — usa Workload Identity Federation (OIDC).
+#
+# PRÉ-REQUISITOS no GCP (fazer uma vez via gcloud CLI):
+#
+#   PROJECT_ID="seu-projeto-gcp"
+#   REPO="guimitestai/platform"
+#
+#   # 1. Habilitar APIs necessárias
+#   gcloud services enable \
+#     iamcredentials.googleapis.com \
+#     cloudrun.googleapis.com \
+#     artifactregistry.googleapis.com
+#
+#   # 2. Criar Service Account
+#   gcloud iam service-accounts create guimi-deploy \
+#     --display-name="Guimí Deploy"
+#
+#   # 3. Dar permissões necessárias
+#   gcloud projects add-iam-policy-binding $PROJECT_ID \
+#     --member="serviceAccount:guimi-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/run.admin"
+#   gcloud projects add-iam-policy-binding $PROJECT_ID \
+#     --member="serviceAccount:guimi-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/artifactregistry.writer"
+#
+#   # 4. Criar Workload Identity Pool
+#   gcloud iam workload-identity-pools create "github-pool" \
+#     --project=$PROJECT_ID \
+#     --location="global" \
+#     --display-name="GitHub Actions Pool"
+#
+#   # 5. Criar Provider OIDC
+#   gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+#     --project=$PROJECT_ID \
+#     --location="global" \
+#     --workload-identity-pool="github-pool" \
+#     --display-name="GitHub Provider" \
+#     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+#     --issuer-uri="https://token.actions.githubusercontent.com"
+#
+#   # 6. Vincular Service Account ao Workload Identity
+#   gcloud iam service-accounts add-iam-policy-binding \
+#     "guimi-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --project=$PROJECT_ID \
+#     --role="roles/iam.workloadIdentityUser" \
+#     --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/${REPO}"
+#
+# Secrets necessários no GitHub (Settings → Secrets):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER → projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+#   GCP_SERVICE_ACCOUNT            → guimi-deploy@PROJECT_ID.iam.gserviceaccount.com
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy GCP
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  GCP_PROJECT_ID: seu-projeto-gcp          # ← substituir
+  GCP_REGION: us-central1
+  ARTIFACT_REGISTRY: us-central1-docker.pkg.dev
+  REPOSITORY: guimitestai
+  IMAGE_NAME: engine
+  CLOUD_RUN_SERVICE: guimitestai-engine
+
+jobs:
+  # ─── 1. Testes ───────────────────────────────────────────────────────────
+  test:
+    name: Testes antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio pytest-cov
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  # ─── 2. Build e push no Artifact Registry ────────────────────────────────
+  build-and-push:
+    name: Build Docker → Artifact Registry
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.full-image }}
+
+    permissions:
+      id-token: write   # necessário para Workload Identity
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autenticar no GCP via Workload Identity
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configurar Docker para Artifact Registry
+        run: gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY }} --quiet
+
+      - name: Definir nome completo da imagem
+        id: image
+        run: |
+          FULL="${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "full-image=${FULL}" >> $GITHUB_OUTPUT
+
+      - name: Build e push da imagem
+        run: |
+          docker build -t ${{ steps.image.outputs.full-image }} .
+          docker push ${{ steps.image.outputs.full-image }}
+          # Tag latest
+          LATEST="${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest"
+          docker tag ${{ steps.image.outputs.full-image }} $LATEST
+          docker push $LATEST
+
+  # ─── 3. Deploy no Cloud Run ───────────────────────────────────────────────
+  deploy:
+    name: Deploy → Cloud Run
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Autenticar no GCP via Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy no Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.build-and-push.outputs.image }}
+          flags: |
+            --allow-unauthenticated
+            --min-instances=0
+            --max-instances=10
+            --memory=512Mi
+            --cpu=1
+            --concurrency=80
+            --timeout=300
+
+      - name: Exibir URL do serviço
+        run: echo "✅ Deploy concluído! URL: ${{ steps.deploy.outputs.url }}"
+
+  # ─── 4. Rollback automático ───────────────────────────────────────────────
+  rollback:
+    name: Rollback automático
+    needs: deploy
+    if: failure()
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Autenticar no GCP via Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Rollback para revisão anterior
+        run: |
+          echo "⚠️ Deploy falhou! Iniciando rollback..."
+          PREVIOUS=$(gcloud run revisions list \
+            --service=${{ env.CLOUD_RUN_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --format="value(metadata.name)" \
+            --sort-by="~metadata.creationTimestamp" \
+            --limit=2 | tail -1)
+          gcloud run services update-traffic ${{ env.CLOUD_RUN_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --to-revisions="${PREVIOUS}=100"
+          echo "✅ Rollback para revisão: $PREVIOUS"

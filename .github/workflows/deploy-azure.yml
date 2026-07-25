@@ -1,0 +1,185 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Guimí Test AI — Deploy no Azure via GitHub Actions + OIDC (Workload Identity)
+# ─────────────────────────────────────────────────────────────────────────────
+# Sem senhas nos secrets — usa Workload Identity Federation (OIDC).
+#
+# PRÉ-REQUISITOS no Azure (fazer uma vez via Azure CLI):
+#
+#   # 1. Criar App Registration
+#   az ad app create --display-name "guimi-deploy"
+#
+#   # 2. Criar Service Principal
+#   az ad sp create --id <APP_ID>
+#
+#   # 3. Criar Federated Credential (OIDC)
+#   az ad app federated-credential create \
+#     --id <APP_ID> \
+#     --parameters '{
+#       "name": "guimi-github-oidc",
+#       "issuer": "https://token.actions.githubusercontent.com",
+#       "subject": "repo:guimitestai/platform:ref:refs/heads/main",
+#       "audiences": ["api://AzureADTokenExchange"]
+#     }'
+#
+#   # 4. Dar permissão de Contributor no Resource Group
+#   az role assignment create \
+#     --assignee <APP_ID> \
+#     --role Contributor \
+#     --scope /subscriptions/<SUB_ID>/resourceGroups/guimitestai-rg
+#
+# Secrets necessários no GitHub (Settings → Secrets):
+#   AZURE_CLIENT_ID     → App Registration Client ID
+#   AZURE_TENANT_ID     → Azure Tenant ID
+#   AZURE_SUBSCRIPTION_ID → Azure Subscription ID
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy Azure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  AZURE_RESOURCE_GROUP: guimitestai-rg
+  AZURE_CONTAINER_APP: guimitestai-engine
+  AZURE_CONTAINER_REGISTRY: guimitestai.azurecr.io
+  IMAGE_NAME: engine
+
+jobs:
+  # ─── 1. Testes ───────────────────────────────────────────────────────────
+  test:
+    name: Testes antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio pytest-cov
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  # ─── 2. Build e push no Azure Container Registry ─────────────────────────
+  build-and-push:
+    name: Build Docker → ACR
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    permissions:
+      id-token: write   # necessário para OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login no Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login no Azure Container Registry
+        run: az acr login --name guimitestai
+
+      - name: Gerar tags da imagem
+        id: meta
+        run: |
+          IMAGE="${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}"
+          TAG="${IMAGE}:${{ github.sha }}"
+          echo "tags=${TAG}" >> $GITHUB_OUTPUT
+          echo "Imagem: ${TAG}"
+
+      - name: Build e push da imagem
+        run: |
+          docker build -t ${{ steps.meta.outputs.tags }} .
+          docker push ${{ steps.meta.outputs.tags }}
+          # Tag latest
+          docker tag ${{ steps.meta.outputs.tags }} \
+            ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  # ─── 3. Deploy no Azure Container Apps ───────────────────────────────────
+  deploy:
+    name: Deploy → Azure Container Apps
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Login no Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy no Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+          containerAppName: ${{ env.AZURE_CONTAINER_APP }}
+          imageToDeploy: ${{ needs.build-and-push.outputs.image-tag }}
+
+      - name: Verificar URL do serviço
+        run: |
+          URL=$(az containerapp show \
+            --name ${{ env.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv)
+          echo "✅ Deploy concluído! URL: https://${URL}"
+
+  # ─── 4. Rollback automático ───────────────────────────────────────────────
+  rollback:
+    name: Rollback automático
+    needs: deploy
+    if: failure()
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Login no Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Rollback para revisão anterior
+        run: |
+          echo "⚠️ Deploy falhou! Iniciando rollback..."
+          PREVIOUS=$(az containerapp revision list \
+            --name ${{ env.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query "[-2].name" --output tsv)
+          az containerapp revision activate \
+            --name ${{ env.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --revision "$PREVIOUS"
+          echo "✅ Rollback para revisão: $PREVIOUS"

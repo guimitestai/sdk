@@ -1,0 +1,157 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Guimí Test AI — Deploy em Kubernetes (EKS / AKS / GKE / on-premise)
+# ─────────────────────────────────────────────────────────────────────────────
+# Funciona com qualquer cluster Kubernetes.
+# Para EKS/AKS/GKE, combine com os workflows de cada nuvem para autenticação OIDC.
+#
+# PRÉ-REQUISITOS:
+#   1. Cluster Kubernetes rodando e acessível
+#   2. Namespace "guimitestai" criado: kubectl create namespace guimitestai
+#   3. Secret com credenciais do registry:
+#      kubectl create secret docker-registry regcred \
+#        --docker-server=SEU_REGISTRY \
+#        --docker-username=SEU_USUARIO \
+#        --docker-password=SUA_SENHA \
+#        -n guimitestai
+#
+# Secrets necessários no GitHub (Settings → Secrets):
+#   KUBE_CONFIG     → conteúdo do ~/.kube/config (base64: cat ~/.kube/config | base64)
+#   REGISTRY_URL    → URL do registry (ex: ghcr.io/guimitestai ou seu ECR/ACR/GCR)
+#   REGISTRY_USER   → usuário do registry
+#   REGISTRY_TOKEN  → token/senha do registry
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de deploy"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NAMESPACE: guimitestai
+  DEPLOYMENT_NAME: engine-api
+  CONTAINER_NAME: engine
+
+jobs:
+  # ─── 1. Testes ───────────────────────────────────────────────────────────
+  test:
+    name: Testes antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio pytest-cov
+
+      - name: Rodar testes
+        run: pytest tests/ -v --tb=short
+
+  # ─── 2. Build e push da imagem ───────────────────────────────────────────
+  build-and-push:
+    name: Build Docker → Registry
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.full-image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login no registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Build e push da imagem
+        id: image
+        run: |
+          FULL="${{ secrets.REGISTRY_URL }}/guimitestai/engine:${{ github.sha }}"
+          docker build -t $FULL .
+          docker push $FULL
+          # Tag latest
+          LATEST="${{ secrets.REGISTRY_URL }}/guimitestai/engine:latest"
+          docker tag $FULL $LATEST
+          docker push $LATEST
+          echo "full-image=${FULL}" >> $GITHUB_OUTPUT
+
+  # ─── 3. Deploy no Kubernetes ─────────────────────────────────────────────
+  deploy:
+    name: Deploy → Kubernetes
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configurar kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Atualizar imagem no Deployment
+        run: |
+          kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+            ${{ env.CONTAINER_NAME }}=${{ needs.build-and-push.outputs.image }} \
+            -n ${{ env.NAMESPACE }}
+
+      - name: Aguardar rollout completar
+        run: |
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Verificar pods em execução
+        run: |
+          kubectl get pods -n ${{ env.NAMESPACE }} -l app=engine-api
+          echo "✅ Deploy concluído com sucesso!"
+
+  # ─── 4. Rollback automático ───────────────────────────────────────────────
+  rollback:
+    name: Rollback automático
+    needs: deploy
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configurar kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Rollback para versão anterior
+        run: |
+          echo "⚠️ Deploy falhou! Iniciando rollback..."
+          kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }}
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=120s
+          echo "✅ Rollback concluído"
+          kubectl get pods -n ${{ env.NAMESPACE }} -l app=engine-api
