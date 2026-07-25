@@ -1,70 +1,83 @@
 # 🐺 Guimí Test AI
 
-> Plataforma unificada de testes, observabilidade e compliance para sistemas de IA.
-> Inspirado no lobo-guará — espécie-chave do Cerrado que regula e protege o ecossistema.
+<div align="center">
 
-[![PyPI version](https://badge.fury.io/py/guimitestai.svg)](https://pypi.org/project/guimitestai/)
+[![CI](https://github.com/guimitestai/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/guimitestai/sdk/actions/workflows/ci.yml)
+[![PyPI version](https://badge.fury.io/py/guimitestai.svg)](https://badge.fury.io/py/guimitestai)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI](https://github.com/EmersonGuilherme/guimitestai/actions/workflows/publish.yml/badge.svg)](https://github.com/EmersonGuilherme/guimitestai/actions)
+[![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-orange.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-guimitestai.github.io-purple.svg)](https://guimitestai.github.io/sdk/)
+
+**O nome parece brinquedo. O produto é cirurgia.**
+
+Plataforma unificada de testes, observabilidade e compliance para LLMs e sistemas de IA.  
+Com suporte nativo a **LGPD**, **EU AI Act** e **OWASP LLM Top 10**.
+
+*Inspirado no lobo-guará — espécie-chave do Cerrado que regula e protege o ecossistema.*
+
+[Documentação](https://guimitestai.github.io/sdk/) · [Quickstart](#-quickstart) · [Compliance LGPD](#-compliance-lgpd) · [PyPI](https://pypi.org/project/guimitestai)
+
+</div>
 
 ---
 
-## O que é?
-
-O **Guimí Test AI** é um SDK Python que unifica em uma única biblioteca:
-
-| Módulo | Função |
-|---|---|
-| 🧪 **Evaluation** | Avaliação LLM-as-Judge com múltiplos critérios |
-| 🔭 **Observability** | Tracing de operações com latência, tokens e erros |
-| 🛡️ **Security** | Red teaming automatizado baseado em OWASP LLM Top 10 |
-| 📋 **Compliance** | Verificação de conformidade LGPD, EU AI Act, NIST, ISO 42001 |
-| 🔗 **Integrations** | Conectores nativos para LangFuse e LangSmith |
-
----
-
-## Instalação
+## ⚡ Quickstart
 
 ```bash
-# Instalação básica
 pip install guimitestai
-
-# Com suporte a LangFuse
-pip install guimitestai[langfuse]
-
-# Com suporte a LangSmith
-pip install guimitestai[langsmith]
-
-# Com suporte a OpenAI (para avaliação local)
-pip install guimitestai[openai]
-
-# Tudo incluído
-pip install guimitestai[all]
+guimi init meu-projeto
 ```
 
----
-
-## Uso Rápido
-
-### Avaliação LLM-as-Judge
+Pronto. Seu projeto de testes de IA está configurado.
 
 ```python
 from guimitestai import GuimiClient
 
-async def main():
-    async with GuimiClient(api_url="http://localhost:3000") as client:
-        result = await client.evaluate(
-            input="Qual é a capital do Brasil?",
-            output="Brasília",
-            expected="Brasília",
-            criteria="correctness"
-        )
-        print(f"Score: {result.score:.2f} | Passou: {result.passed}")
-        # Score: 1.00 | Passou: True
+client = GuimiClient(api_key="sua-chave")
+
+result = client.evaluate(
+    input="Qual é a capital do Brasil?",
+    output="Brasília",
+    expected="Brasília",
+    criteria="correctness"
+)
+print(f"Score: {result.score:.2f} | Passou: {result.passed}")
+# Score: 1.00 | Passou: True
 ```
 
-### Avaliação Local (sem servidor)
+---
+
+## 🎯 Por que o Guimí?
+
+Você subiu seu LLM em produção. Ele passa no demo. Mas você sabe o que acontece quando um usuário tenta extrair dados pessoais? Quando o modelo alucina em contexto crítico? Quando uma versão nova regride silenciosamente?
+
+O Guimí fecha esse ciclo — da avaliação pré-produção até o monitoramento em produção, passando por red teaming adversarial e compliance regulatório — **em uma única ferramenta**.
+
+| Capacidade | Guimí | Confident AI | Promptfoo | Giskard | Langfuse |
+|-----------|:-----:|:------------:|:---------:|:-------:|:--------:|
+| Testes autônomos por IA | ✅ | ❌ | Parcial | ❌ | ❌ |
+| Red teaming em PT-BR | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Compliance LGPD nativo | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Integração LangFuse + LangSmith | ✅ | Parcial | ❌ | ❌ | ✅ |
+| Ciclo fechado sem intervenção humana | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Interface em português | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+---
+
+## 📦 Módulos
+
+| Módulo | Função |
+|--------|--------|
+| 🧪 **Evaluation** | Avaliação LLM-as-Judge com múltiplos critérios |
+| 🔭 **Observability** | Tracing com latência, custo por token e anomalias |
+| 🛡️ **Security** | Red teaming automatizado em PT-BR (OWASP LLM Top 10) |
+| 🤖 **Autonomous** | Descoberta e geração de testes sem intervenção humana |
+| 📋 **Compliance** | LGPD, EU AI Act, NIST AI RMF — relatório pronto para DPO |
+| 🔗 **Integrations** | LangFuse, LangSmith, Garak como cidadãos de primeira classe |
+
+---
+
+## 🧪 Avaliação
 
 ```python
 from guimitestai.evaluation import Evaluator
@@ -79,7 +92,11 @@ result = await evaluator.evaluate(
 print(f"Score: {result.score} | Raciocínio: {result.reasoning}")
 ```
 
-### Observabilidade com Tracer
+**Critérios disponíveis:** `correctness` · `helpfulness` · `safety` · `conciseness` · `faithfulness` · `lgpd_compliance`
+
+---
+
+## 🔭 Observabilidade
 
 ```python
 from guimitestai.observability import Tracer
@@ -92,29 +109,46 @@ async with tracer.span("chat_completion", model="gpt-4o") as span:
     span.set_output(response.content)
     span.set_tokens(input_tokens=10, output_tokens=25)
 
-print(tracer.summary())
-# {'total': 1, 'errors': 0, 'avg_latency_ms': 342, ...}
+summary = tracer.summary()
+print(f"Traces: {summary['total']} | Latência média: {summary['avg_latency_ms']}ms")
 ```
 
-### Red Teaming Automatizado
+---
+
+## 🛡️ Red Teaming
 
 ```python
 from guimitestai.security import RedTeamer
 
-async def my_llm(prompt: str) -> str:
-    # Sua função de LLM
-    return await llm.invoke(prompt)
-
 red_teamer = RedTeamer()
-alerts = await red_teamer.run(target=my_llm)
+alerts = await red_teamer.run(target=meu_llm)
 
 report = red_teamer.report(alerts)
-print(f"Ataques: {report['total_attacks']}")
-print(f"Vulnerabilidades: {report['vulnerabilities_found']}")
-print(f"Taxa: {report['vulnerability_rate']:.1%}")
+print(f"Ataques: {report['total_attacks']} | Vulnerabilidades: {report['vulnerabilities_found']}")
+print(f"Taxa de vulnerabilidade: {report['vulnerability_rate']:.1%}")
 ```
 
-### Verificação de Compliance
+---
+
+## 🤖 Testes Autônomos
+
+O Guimí descobre, gera e executa testes sem intervenção humana — o único SDK do mercado com esse ciclo fechado.
+
+```python
+from guimitestai.autonomous import AutonomousRunner
+
+runner = AutonomousRunner(target_url="https://sua-api.com/chat")
+runner.discover()       # descobre comportamentos automaticamente
+runner.generate()       # gera casos de teste com LLM
+results = runner.run()  # executa e reporta
+print(f"Testes gerados: {results.total} | Falhas: {results.failures}")
+```
+
+---
+
+## 🛡️ Compliance LGPD
+
+O Guimí é a **única ferramenta do mundo** com suporte nativo à LGPD aplicada a sistemas de IA, cobrindo os 23 artigos relevantes para IA — incluindo o Art. 20 (decisões automatizadas).
 
 ```python
 from guimitestai.compliance import ComplianceChecker
@@ -134,93 +168,96 @@ report = checker.analyze(
     frameworks=[ComplianceFramework.LGPD, ComplianceFramework.EU_AI_ACT]
 )
 
-print(f"Score de Conformidade: {report.overall_score:.1f}%")
-print(f"Brechas Críticas: {report.critical_gaps}")
+print(f"Score LGPD: {report.overall_score:.1f}%")
+print(f"Brechas críticas: {report.critical_gaps}")
 for gap in report.gaps:
-    print(f"  [{gap.severity.value.upper()}] {gap.framework.value} {gap.article}: {gap.title}")
+    print(f"  [{gap.severity.value.upper()}] Art. {gap.article}: {gap.title}")
 ```
 
-### Integração com LangFuse
+**Frameworks cobertos:** LGPD · EU AI Act · OWASP LLM Top 10 · NIST AI RMF · ISO/IEC 42001
+
+[Ver documentação completa de compliance →](https://guimitestai.github.io/sdk/compliance/lgpd/)
+
+---
+
+## 🔌 Integrações
 
 ```python
-from guimitestai.integrations import LangFuseIntegration
-
-lf = LangFuseIntegration(
-    public_key="pk-lf-...",
-    secret_key="sk-lf-...",
-)
-
-# Usar como callback em LangChain
-from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(callbacks=[lf.callback_handler])
-
-# Registrar score de avaliação
-lf.score(trace_id="trace-123", name="correctness", value=0.95)
-lf.flush()
-```
-
----
-
-## Configuração via Variáveis de Ambiente
-
-```bash
-# API do Guimí Test AI
-GUIMI_API_URL=http://localhost:3000
-GUIMI_API_KEY=sk-guimi-...
-
 # LangFuse
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com
+from guimitestai.integrations import LangFuseIntegration
+lf = LangFuseIntegration(public_key="pk-lf-...", secret_key="sk-lf-...")
+lf.score(trace_id="trace-123", name="correctness", value=0.95)
 
 # LangSmith
-LANGCHAIN_API_KEY=ls__...
-LANGCHAIN_PROJECT=guimitestai
+from guimitestai.integrations import LangSmithIntegration
+ls = LangSmithIntegration(api_key="ls__...")
 ```
 
 ---
 
-## Critérios de Avaliação Disponíveis
-
-| Critério | Descrição |
-|---|---|
-| `correctness` | Precisão factual em relação ao ground truth |
-| `helpfulness` | Utilidade e relevância para o usuário |
-| `safety` | Ausência de conteúdo prejudicial ou discriminatório |
-| `conciseness` | Objetividade e ausência de verbosidade |
-| `faithfulness` | Fidelidade ao contexto (RAG), sem alucinações |
-| `lgpd_compliance` | Conformidade com privacidade de dados (LGPD) |
-
----
-
-## Frameworks de Compliance Suportados
-
-| Framework | Cobertura |
-|---|---|
-| 🇧🇷 **LGPD** | Art. 6, 18, 20, 37, 46 |
-| 🇪🇺 **EU AI Act** | Art. 9, 10, 12, 13, 14, 15, 17 |
-| 🇺🇸 **NIST AI RMF** | GOVERN, MAP, MEASURE, MANAGE |
-| 🔐 **OWASP LLM Top 10** | LLM01–LLM10 |
-| 🌐 **ISO/IEC 42001** | Cláusulas 5–10 |
-
----
-
-## Desenvolvimento
+## 🚀 CI/CD
 
 ```bash
-git clone https://github.com/EmersonGuilherme/guimitestai.git
-cd guimitestai
-pip install -e ".[dev]"
-pytest tests/ -v
+# Gerar template para o seu sistema de CI/CD
+guimi template cicd github-actions > .github/workflows/ai-quality-gate.yml
+guimi template cicd gitlab
+guimi template cicd jenkins
+guimi template cicd azure
+guimi template cicd codebuild
 ```
 
 ---
 
-## Licença
+## 📥 Instalação
 
-MIT © [Emerson Guilherme](https://github.com/EmersonGuilherme)
+```bash
+pip install guimitestai                    # básico
+pip install "guimitestai[langfuse]"        # + LangFuse
+pip install "guimitestai[langsmith]"       # + LangSmith
+pip install "guimitestai[all]"             # tudo incluído
+```
+
+**Requisitos:** Python 3.9+
 
 ---
+
+## 📚 Documentação
+
+**[guimitestai.github.io/sdk](https://guimitestai.github.io/sdk/)**
+
+- [Quickstart em 5 minutos](https://guimitestai.github.io/sdk/getting-started/quickstart/)
+- [Compliance LGPD](https://guimitestai.github.io/sdk/compliance/lgpd/)
+- [Guia de CI/CD](https://guimitestai.github.io/sdk/guides/cicd/)
+- [Referência da API](https://guimitestai.github.io/sdk/reference/client/)
+
+---
+
+## 🤝 Contribuindo
+
+```bash
+git clone https://github.com/guimitestai/sdk.git
+cd sdk
+pip install -e ".[dev]"
+pytest
+```
+
+---
+
+## 📄 Licença
+
+Distribuído sob a [Business Source License 1.1](LICENSE). O código-fonte é aberto e auditável. Uso comercial como serviço requer licença comercial.
+
+Em 1º de janeiro de 2028, converte automaticamente para **Apache 2.0**.
+
+---
+
+<div align="center">
+
+Feito no Brasil 🇧🇷 por [Emerson Guilherme](https://github.com/EmersonGuilherme) e a comunidade Guimí.
 
 *🐺 Assim como o lobo-guará regula e protege o ecossistema do Cerrado,
 o Guimí Test AI monitora, detecta anomalias e protege o ecossistema de IA da sua organização.*
+
+**[⭐ Star no GitHub](https://github.com/guimitestai/sdk)** · **[📦 PyPI](https://pypi.org/project/guimitestai)** · **[📚 Docs](https://guimitestai.github.io/sdk/)**
+
+</div>

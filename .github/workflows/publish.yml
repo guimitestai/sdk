@@ -1,0 +1,64 @@
+name: Publicar no PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"   # dispara em tags como v0.1.0, v1.0.0
+  workflow_dispatch:  # permite publicar manualmente pelo GitHub UI
+
+jobs:
+  build:
+    name: Build do pacote
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar ferramentas de build
+        run: python -m pip install build twine
+      - name: Build do pacote
+        run: python -m build
+      - name: Validar pacote com twine
+        run: twine check dist/*
+      - name: Upload dos artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  test:
+    name: Testes antes de publicar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependências
+        run: pip install -e ".[cli,autonomous]" pytest pytest-asyncio
+      - name: Smoke test (15/15 devem passar)
+        run: python smoke_test.py
+      - name: Suite completa de testes
+        run: pytest tests/ -v --tb=short
+
+  publish-to-pypi:
+    name: Publicar no PyPI
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/guimitestai/
+    permissions:
+      id-token: write   # Trusted Publishing (OIDC) — sem senha ou token manual
+    steps:
+      - name: Download dos artefatos
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Publicar no PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Sem senha nem token — usa Trusted Publishing configurado em pypi.org
