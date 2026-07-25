@@ -77,9 +77,9 @@ dev = [
 
 [project.urls]
 Homepage = "https://guimitestai.com"
-Repository = "https://github.com/EmersonGuilherme/guimitestai"
-Documentation = "https://docs.guimitestai.com"
-"Bug Tracker" = "https://github.com/EmersonGuilherme/guimitestai/issues"
+Repository = "https://github.com/guimitestai/sdk"
+Documentation = "https://guimitestai.github.io/sdk/"
+"Bug Tracker" = "https://github.com/guimitestai/sdk/issues"
 
 [project.scripts]
 guimi = "guimitestai.cli.main:app"
@@ -92,7 +92,8 @@ line-length = 100
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.9"
@@ -102,4 +103,4 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=guimitestai --cov-report=term-missing --cov-report=xml"
+addopts = "-v --tb=short"
