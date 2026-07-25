@@ -1,10 +1,12 @@
-# 🐺 Guimí Test AI
 
 <div align="center">
 
-[![CI](https://github.com/guimitestai/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/guimitestai/sdk/actions/workflows/ci.yml)
+[![CI Python](https://github.com/guimitestai/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/guimitestai/sdk/actions/workflows/ci.yml)
+[![CI TypeScript](https://github.com/guimitestai/sdk/actions/workflows/ci-typescript.yml/badge.svg)](https://github.com/guimitestai/sdk/actions/workflows/ci-typescript.yml)
 [![PyPI version](https://badge.fury.io/py/guimitestai.svg)](https://badge.fury.io/py/guimitestai)
+[![npm version](https://badge.fury.io/js/guimitestai.svg)](https://badge.fury.io/js/guimitestai)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Node.js 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-orange.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-guimitestai.github.io-purple.svg)](https://guimitestai.github.io/sdk/)
 
@@ -15,20 +17,18 @@ Com suporte nativo a **LGPD**, **EU AI Act** e **OWASP LLM Top 10**.
 
 *Inspirado no lobo-guará — espécie-chave do Cerrado que regula e protege o ecossistema.*
 
-[Documentação](https://guimitestai.github.io/sdk/) · [Quickstart](#-quickstart) · [Compliance LGPD](#-compliance-lgpd) · [PyPI](https://pypi.org/project/guimitestai)
+[Documentação](https://guimitestai.github.io/sdk/) · [Quickstart Python](#-quickstart-python) · [Quickstart TypeScript](#-quickstart-typescript) · [Compliance LGPD](#-compliance-lgpd)
 
 </div>
 
 ---
 
-## ⚡ Quickstart
+## ⚡ Quickstart Python
 
 ```bash
 pip install guimitestai
 guimi init meu-projeto
 ```
-
-Pronto. Seu projeto de testes de IA está configurado.
 
 ```python
 from guimitestai import GuimiClient
@@ -47,6 +47,47 @@ print(f"Score: {result.score:.2f} | Passou: {result.passed}")
 
 ---
 
+## ⚡ Quickstart TypeScript
+
+```bash
+npm install guimitestai
+# ou
+pnpm add guimitestai
+```
+
+```typescript
+import { GuimiClient } from 'guimitestai'
+
+const guimi = new GuimiClient({ apiKey: 'sua-api-key' })
+
+// Avaliar resposta de LLM
+const result = await guimi.evaluate({
+  input: "Qual a capital do Brasil?",
+  output: "Brasília",
+  criteria: ["accuracy", "safety"]
+})
+console.log(result.score)  // 0.95
+console.log(result.passed) // true
+
+// Compliance LGPD
+const compliance = await guimi.compliance.lgpd("texto da resposta do LLM")
+console.log(compliance.compliant) // true
+
+// Red teaming autônomo
+const report = await guimi.redTeam.run({
+  target: async (prompt) => await meuLLM.chat(prompt)
+})
+console.log(report.summary.score) // 95 (0-100, 100 = seguro)
+
+// Observabilidade
+const trace = await guimi.tracer.trace({ name: "chat-completion", userId: "user-123" })
+const span = trace.span({ name: "llm-call", input: prompt })
+const response = await meuLLM.chat(prompt)
+await span.end(response)
+```
+
+---
+
 ## 🎯 Por que o Guimí?
 
 Você subiu seu LLM em produção. Ele passa no demo. Mas você sabe o que acontece quando um usuário tenta extrair dados pessoais? Quando o modelo alucina em contexto crítico? Quando uma versão nova regride silenciosamente?
@@ -58,6 +99,7 @@ O Guimí fecha esse ciclo — da avaliação pré-produção até o monitorament
 | Testes autônomos por IA | ✅ | ❌ | Parcial | ❌ | ❌ |
 | Red teaming em PT-BR | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Compliance LGPD nativo | ✅ | ❌ | ❌ | ❌ | ❌ |
+| SDK TypeScript + Python | ✅ | ❌ | Parcial | ❌ | Parcial |
 | Integração LangFuse + LangSmith | ✅ | Parcial | ❌ | ❌ | ✅ |
 | Ciclo fechado sem intervenção humana | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Interface em português | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -66,18 +108,18 @@ O Guimí fecha esse ciclo — da avaliação pré-produção até o monitorament
 
 ## 📦 Módulos
 
-| Módulo | Função |
-|--------|--------|
-| 🧪 **Evaluation** | Avaliação LLM-as-Judge com múltiplos critérios |
-| 🔭 **Observability** | Tracing com latência, custo por token e anomalias |
-| 🛡️ **Security** | Red teaming automatizado em PT-BR (OWASP LLM Top 10) |
-| 🤖 **Autonomous** | Descoberta e geração de testes sem intervenção humana |
-| 📋 **Compliance** | LGPD, EU AI Act, NIST AI RMF — relatório pronto para DPO |
-| 🔗 **Integrations** | LangFuse, LangSmith, Garak como cidadãos de primeira classe |
+| Módulo | Python | TypeScript | Função |
+|--------|:------:|:----------:|--------|
+| 🧪 **Evaluation** | ✅ | ✅ | Avaliação LLM-as-Judge com múltiplos critérios |
+| 🔭 **Observability** | ✅ | ✅ | Tracing com latência, custo por token e anomalias |
+| 🛡️ **Security** | ✅ | ✅ | Red teaming automatizado em PT-BR (OWASP LLM Top 10) |
+| 🤖 **Autonomous** | ✅ | 🔜 | Descoberta e geração de testes sem intervenção humana |
+| 📋 **Compliance** | ✅ | ✅ | LGPD, EU AI Act, NIST AI RMF — relatório pronto para DPO |
+| 🔗 **Integrations** | ✅ | 🔜 | LangFuse, LangSmith, Garak como cidadãos de primeira classe |
 
 ---
 
-## 🧪 Avaliação
+## 🧪 Avaliação (Python)
 
 ```python
 from guimitestai.evaluation import Evaluator
@@ -96,7 +138,7 @@ print(f"Score: {result.score} | Raciocínio: {result.reasoning}")
 
 ---
 
-## 🔭 Observabilidade
+## 🔭 Observabilidade (Python)
 
 ```python
 from guimitestai.observability import Tracer
@@ -115,7 +157,7 @@ print(f"Traces: {summary['total']} | Latência média: {summary['avg_latency_ms'
 
 ---
 
-## 🛡️ Red Teaming
+## 🛡️ Red Teaming (Python)
 
 ```python
 from guimitestai.security import RedTeamer
@@ -210,6 +252,8 @@ guimi template cicd codebuild
 
 ## 📥 Instalação
 
+### Python
+
 ```bash
 pip install guimitestai                    # básico
 pip install "guimitestai[langfuse]"        # + LangFuse
@@ -218,6 +262,18 @@ pip install "guimitestai[all]"             # tudo incluído
 ```
 
 **Requisitos:** Python 3.9+
+
+### TypeScript / JavaScript
+
+```bash
+npm install guimitestai
+# ou
+pnpm add guimitestai
+# ou
+yarn add guimitestai
+```
+
+**Requisitos:** Node.js 18+, TypeScript 5+ (opcional mas recomendado)
 
 ---
 
@@ -235,10 +291,17 @@ pip install "guimitestai[all]"             # tudo incluído
 ## 🤝 Contribuindo
 
 ```bash
+# Python
 git clone https://github.com/guimitestai/sdk.git
 cd sdk
 pip install -e ".[dev]"
 pytest
+
+# TypeScript
+cd sdk-typescript
+pnpm install
+pnpm test
+pnpm build
 ```
 
 ---
@@ -258,6 +321,6 @@ Feito no Brasil 🇧🇷 por [Emerson Guilherme](https://github.com/EmersonGuilh
 *🐺 Assim como o lobo-guará regula e protege o ecossistema do Cerrado,
 o Guimí Test AI monitora, detecta anomalias e protege o ecossistema de IA da sua organização.*
 
-**[⭐ Star no GitHub](https://github.com/guimitestai/sdk)** · **[📦 PyPI](https://pypi.org/project/guimitestai)** · **[📚 Docs](https://guimitestai.github.io/sdk/)**
+**[⭐ Star no GitHub](https://github.com/guimitestai/sdk)** · **[📦 PyPI](https://pypi.org/project/guimitestai)** · **[📦 npm](https://www.npmjs.com/package/guimitestai)** · **[📚 Docs](https://guimitestai.github.io/sdk/)**
 
 </div>
