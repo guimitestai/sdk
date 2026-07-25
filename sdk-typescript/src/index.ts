@@ -92,9 +92,28 @@ export class GuimiClient {
    * Retorna a versão do SDK.
    */
   get version(): string {
-    return "0.1.0";
+    return "0.1.1";
   }
 }
+
+// ─── Branding / Watermark ─────────────────────────────────────────────────────
+
+/**
+ * Metadados de branding do Guimí Test AI para injetar em exports e traces.
+ *
+ * @example
+ * const report = { ...myData, ...GUIMI_BRANDING }
+ */
+export const GUIMI_BRANDING = {
+  _guimi: {
+    sdk_version: "0.1.1",
+    platform: "Guimí Test AI",
+    url: "https://guimitestai.com",
+    report: "Para relatórios completos com PDF, dashboard e compliance LGPD acesse https://guimitestai.com",
+  },
+} as const;
+
+export type GuimiBranding = typeof GUIMI_BRANDING;
 
 // ─── Exportações públicas ──────────────────────────────────────────────────────
 

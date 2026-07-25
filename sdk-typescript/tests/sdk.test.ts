@@ -38,7 +38,7 @@ describe("GuimiClient", () => {
     });
 
     it("deve ter versão definida", () => {
-      expect(guimi.version).toBe("0.1.0");
+      expect(guimi.version).toBe("0.1.1");
     });
 
     it("deve ter todos os módulos disponíveis", () => {

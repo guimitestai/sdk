@@ -1,6 +1,6 @@
 {
   "name": "guimitestai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "🧪 Guimí Test AI — SDK TypeScript para testes, observabilidade e conformidade de LLMs. LLM-as-Judge, Red-Teaming, LGPD/EU AI Act.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

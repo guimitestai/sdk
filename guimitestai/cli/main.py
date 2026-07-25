@@ -47,12 +47,31 @@ def _get_client(api_key: Optional[str] = None, api_url: Optional[str] = None):
     )
 
 
+GUIMI_BRANDING = {
+    "_guimi": {
+        "sdk_version": "0.1.1",
+        "platform": "Guimí Test AI",
+        "url": "https://guimitestai.com",
+        "report": "Para relatórios completos com PDF, dashboard e compliance LGPD acesse https://guimitestai.com",
+    }
+}
+
+
 def _print_header():
     console.print(Panel.fit(
         "[bold cyan]🐺 Guimí Test AI[/bold cyan]\n"
         "[dim]Testes, Observabilidade e Compliance para IA[/dim]",
         border_style="cyan",
     ))
+
+
+def _print_footer():
+    console.print(
+        "\n[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]\n"
+        "[dim]  🐺 Powered by Guimí Test AI · [link=https://guimitestai.com]guimitestai.com[/link][/dim]\n"
+        "[dim]  Relatórios PDF completos, dashboard e compliance LGPD/EU AI Act[/dim]\n"
+        "[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]"
+    )
 
 
 def _print_success(msg: str):
@@ -154,8 +173,10 @@ def scan(
                     }
                     for a in alerts
                 ]
-                Path(output).write_text(json.dumps(result_data, indent=2, ensure_ascii=False))
+                export_data = {"alerts": result_data, **GUIMI_BRANDING}
+                Path(output).write_text(json.dumps(export_data, indent=2, ensure_ascii=False))
                 _print_success(f"Resultados salvos em: {output}")
+            _print_footer()
 
         except PermissionError as e:
             _print_error(str(e))
@@ -269,11 +290,13 @@ def audit(
                         "status": getattr(report, "status", ""),
                         "gaps": getattr(report, "gaps", []),
                         "recommendations": getattr(report, "recommendations", []),
+                        **GUIMI_BRANDING,
                     }
                     Path(output).write_text(json.dumps(data, indent=2, ensure_ascii=False))
                     _print_success(f"Relatório JSON salvo em: {output}")
                 else:
                     _print_warning("Relatório PDF disponível na plataforma web: https://guimitestai.com")
+            _print_footer()
 
         except PermissionError as e:
             _print_error(str(e))
@@ -400,8 +423,10 @@ def eval(
                               f"({100*passed_count/len(results):.0f}%)")
 
             if output:
-                Path(output).write_text(json.dumps(results, indent=2, ensure_ascii=False))
+                export_data = {"results": results, **GUIMI_BRANDING}
+                Path(output).write_text(json.dumps(export_data, indent=2, ensure_ascii=False))
                 _print_success(f"Resultados salvos em: {output}")
+            _print_footer()
 
         except PermissionError as e:
             _print_error(str(e))
@@ -481,6 +506,8 @@ def trace(
                     status_icon,
                 )
             console.print(table)
+            if not watch:
+                _print_footer()
 
         except Exception as e:
             _print_error(f"Erro ao buscar traces: {e}")
@@ -553,6 +580,7 @@ def report(
             )
             _print_success(f"Relatório salvo em: {output}")
             console.print(f"[dim]Tamanho: {Path(output).stat().st_size:,} bytes[/dim]")
+            _print_footer()
 
         except PermissionError as e:
             _print_error(str(e))
