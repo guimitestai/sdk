@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { GuimiHttpClient } from "../core/client.js";
 import { TraceOptions, SpanOptions, TraceSummary } from "../core/types.js";
 
@@ -76,7 +77,7 @@ export class Trace {
    * await span.end(response)
    */
   span(options: SpanOptions): Span {
-    const spanId = crypto.randomUUID();
+    const spanId = randomUUID();
     const span = new Span(
       this.client,
       this.traceId,
@@ -133,7 +134,7 @@ export class Tracer {
     const response = await this.client.post<{ traceId: string }>(
       "/v1/traces",
       options
-    ).catch(() => ({ data: { traceId: crypto.randomUUID() } }));
+    ).catch(() => ({ data: { traceId: randomUUID() } }));
 
     return new Trace(this.client, response.data.traceId, options.name);
   }
