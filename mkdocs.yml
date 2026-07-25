@@ -1,0 +1,112 @@
+site_name: Guimí Test AI
+site_description: Plataforma unificada de testes, observabilidade e compliance para LLMs e sistemas de IA
+site_url: https://guimitestai.github.io/sdk
+repo_url: https://github.com/guimitestai/sdk
+repo_name: guimitestai/sdk
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: pt-BR
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Modo escuro
+    - scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Modo claro
+  font:
+    text: Inter
+    code: JetBrains Mono
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+plugins:
+  - search:
+      lang: pt
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+
+nav:
+  - Início: index.md
+  - Começando:
+    - Instalação: getting-started/installation.md
+    - Quickstart (5 min): getting-started/quickstart.md
+    - Configuração: getting-started/configuration.md
+  - Guias:
+    - Avaliação de LLMs: guides/evaluation.md
+    - Observabilidade: guides/observability.md
+    - Red Teaming: guides/red-teaming.md
+    - Testes Autônomos: guides/autonomous.md
+    - CI/CD: guides/cicd.md
+  - Compliance:
+    - Visão Geral: compliance/overview.md
+    - LGPD: compliance/lgpd.md
+    - EU AI Act: compliance/eu-ai-act.md
+    - OWASP LLM Top 10: compliance/owasp.md
+    - NIST AI RMF: compliance/nist.md
+  - Integrações:
+    - LangFuse: integrations/langfuse.md
+    - LangSmith: integrations/langsmith.md
+    - Garak: integrations/garak.md
+    - CI/CD (GitHub Actions): integrations/github-actions.md
+  - Referência da API:
+    - GuimiClient: reference/client.md
+    - Evaluator: reference/evaluator.md
+    - Tracer: reference/tracer.md
+    - RedTeamer: reference/red-teamer.md
+    - ComplianceChecker: reference/compliance-checker.md
+    - CLI: reference/cli.md
+  - Licença: license.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/guimitestai
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/guimitestai
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/company/guimitestai
+  version:
+    provider: mike
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX
+
+extra_css:
+  - stylesheets/extra.css
