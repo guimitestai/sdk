@@ -69,7 +69,7 @@ from guimitestai.evaluation.evaluator import Evaluator
 from guimitestai.observability.tracer import Tracer
 from guimitestai.security.red_teamer import RedTeamer
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Emerson Guilherme"
 __license__ = "MIT"
 __url__ = "https://guimitestai.com"

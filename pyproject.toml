@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "guimitestai"
-version = "0.1.1"
+version = "0.1.2"
 description = "🐺 Guimí Test AI — Plataforma unificada de testes, observabilidade e compliance para sistemas de IA"
 readme = "README.md"
 license = { text = "Business Source License 1.1" }

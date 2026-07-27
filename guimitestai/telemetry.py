@@ -47,12 +47,12 @@ from typing import Any, Dict, List, Optional
 
 # ─── Configuração ─────────────────────────────────────────────────────────────
 
-TELEMETRY_ENDPOINT = "https://telemetry.guimitestai.com/v1/events"
+TELEMETRY_ENDPOINT = "https://guimitestai.com/v1/events"
 TELEMETRY_CONFIG_DIR = Path.home() / ".guimitestai"
 TELEMETRY_CONFIG_FILE = TELEMETRY_CONFIG_DIR / "telemetry.json"
 TELEMETRY_DATA_FILE = TELEMETRY_CONFIG_DIR / "telemetry_data.jsonl"
 
-SDK_VERSION = "0.1.0"
+SDK_VERSION = "0.1.2"
 
 
 # ─── Consentimento ────────────────────────────────────────────────────────────

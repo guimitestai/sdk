@@ -72,7 +72,7 @@ class GuimiClient:
     ) -> None:
         resolved_key = api_key or os.environ.get("GUIMI_API_KEY")
         self.config = config or GuimiConfig(
-            api_url=api_url or "https://api.guimitestai.com",
+            api_url=api_url or "https://guimitestai.com",
             api_key=resolved_key,
         )
         self._http = httpx.AsyncClient(
