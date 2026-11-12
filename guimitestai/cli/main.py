@@ -27,6 +27,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from guimitestai.core.constants import DEFAULT_API_URL, SDK_VERSION
+
 app = typer.Typer(
     name="guimi",
     help="🐺 Guimí Test AI — Testes, observabilidade e compliance para sistemas de IA",
@@ -43,13 +45,13 @@ def _get_client(api_key: Optional[str] = None, api_url: Optional[str] = None):
     from guimitestai.core.client import GuimiClient
     return GuimiClient(
         api_key=api_key or os.environ.get("GUIMI_API_KEY"),
-        api_url=api_url or os.environ.get("GUIMI_API_URL", "https://api.guimitestai.com"),
+        api_url=api_url or os.environ.get("GUIMI_API_URL", DEFAULT_API_URL),
     )
 
 
 GUIMI_BRANDING = {
     "_guimi": {
-        "sdk_version": "0.1.1",
+        "sdk_version": SDK_VERSION,
         "platform": "Guimí Test AI",
         "url": "https://guimitestai.com",
         "report": "Para relatórios completos com PDF, dashboard e compliance LGPD acesse https://guimitestai.com",
