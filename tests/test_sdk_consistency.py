@@ -1,9 +1,4 @@
 """Regression checks for canonical SDK configuration and metadata."""
-import os
-
-import httpx
-import pytest
-
 import guimitestai
 from guimitestai.cli.main import GUIMI_BRANDING, _get_client
 from guimitestai.core.client import GuimiClient
