@@ -54,6 +54,7 @@ from guimitestai import telemetry
 from guimitestai.compliance.checker import ComplianceChecker
 from guimitestai.core.client import GuimiClient
 from guimitestai.core.config import GuimiConfig
+from guimitestai.core.constants import DEFAULT_API_URL, SDK_LICENSE, SDK_VERSION
 from guimitestai.core.models import (
     ComplianceReport,
     EvaluationResult,
@@ -69,9 +70,9 @@ from guimitestai.evaluation.evaluator import Evaluator
 from guimitestai.observability.tracer import Tracer
 from guimitestai.security.red_teamer import RedTeamer
 
-__version__ = "0.1.2"
+__version__ = SDK_VERSION
 __author__ = "Emerson Guilherme"
-__license__ = "MIT"
+__license__ = SDK_LICENSE
 __url__ = "https://guimitestai.com"
 __docs__ = "https://docs.guimitestai.com"
 
@@ -108,7 +109,7 @@ _global_config: Optional[GuimiConfig] = None
 
 def configure(
     api_key: Optional[str] = None,
-    api_url: str = "https://api.guimitestai.com",
+    api_url: Optional[str] = None,
     telemetry_enabled: Optional[bool] = None,
 ) -> GuimiConfig:
     """Configura o SDK globalmente.
@@ -139,7 +140,7 @@ def configure(
 
     _global_config = GuimiConfig(
         api_key=resolved_key,
-        api_url=api_url,
+        api_url=api_url or os.getenv("GUIMI_API_URL", DEFAULT_API_URL),
     )
 
     if telemetry_enabled is True:
