@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from guimitestai.core.config import GuimiConfig
+from guimitestai.core.constants import DEFAULT_API_URL, SDK_VERSION
 from guimitestai.core.models import (
     ComplianceFramework,
     ComplianceReport,
@@ -72,7 +73,7 @@ class GuimiClient:
     ) -> None:
         resolved_key = api_key or os.environ.get("GUIMI_API_KEY")
         self.config = config or GuimiConfig(
-            api_url=api_url or "https://guimitestai.com",
+            api_url=api_url or os.getenv("GUIMI_API_URL", DEFAULT_API_URL),
             api_key=resolved_key,
         )
         self._http = httpx.AsyncClient(
@@ -100,7 +101,7 @@ class GuimiClient:
     def _build_headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "guimitestai-python/0.1.0",
+            "User-Agent": f"guimitestai-python/{SDK_VERSION}",
         }
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"

@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from guimitestai.core.constants import DEFAULT_API_URL
+
 
 class GuimiConfig(BaseModel):
     """Configuração do SDK Guimí Test AI.
@@ -19,7 +21,7 @@ class GuimiConfig(BaseModel):
     """
 
     api_url: str = Field(
-        default_factory=lambda: os.getenv("GUIMI_API_URL", "http://localhost:3000"),
+        default_factory=lambda: os.getenv("GUIMI_API_URL", DEFAULT_API_URL),
         description="URL base da API Guimí Test AI",
     )
     api_key: Optional[str] = Field(
